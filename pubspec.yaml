@@ -1,0 +1,28 @@
+name: rahino_istanbul
+description: "Rahino: Istanbul Treasure Hunt — a 3D travel-adventure game. Flutter shell + embedded WebGL 3D world."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  # State management
+  provider: ^6.1.2
+  # Local persistence (save system / offline mode)
+  shared_preferences: ^2.2.3
+  # Embedded WebGL 3D engine + JS <-> Dart bridge
+  flutter_inappwebview: ^6.0.0
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/web3d/
+    - assets/web3d/js/

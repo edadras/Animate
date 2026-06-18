@@ -1,0 +1,66 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1d2a; }
+body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: none; }
+
+#scene { display: block; width: 100vw; height: 100vh; }
+
+#overlay {
+  position: fixed; inset: 0; pointer-events: none; z-index: 10;
+}
+
+/* World-space landmark labels */
+#world-labels { position: absolute; inset: 0; }
+.world-label {
+  position: absolute; transform: translate(-50%, -100%);
+  background: rgba(10, 25, 40, 0.62); color: #fff;
+  padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+  white-space: nowrap; backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  display: flex; align-items: center; gap: 6px;
+  transition: opacity .25s;
+}
+.world-label .icon { font-size: 14px; }
+.world-label.discovered { background: rgba(40, 120, 70, 0.7); }
+.world-label.far { opacity: 0.35; }
+
+/* Rahino speech bubble (follows Rahino in screen space) */
+#rahino-bubble {
+  position: absolute; transform: translate(-50%, -100%);
+  max-width: 240px; background: #fff; color: #1a2433;
+  padding: 10px 14px; border-radius: 16px; font-size: 14px; font-weight: 500;
+  line-height: 1.35; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  border: 2px solid #ffd34e;
+}
+#rahino-bubble::after {
+  content: ""; position: absolute; bottom: -10px; left: 50%;
+  transform: translateX(-50%);
+  border-left: 9px solid transparent; border-right: 9px solid transparent;
+  border-top: 11px solid #ffd34e;
+}
+#rahino-bubble .name { font-weight: 800; color: #e0552b; font-size: 12px; display:block; margin-bottom:2px;}
+
+/* Interact hint above interactable */
+#interact-hint {
+  position: absolute; transform: translate(-50%, -100%);
+  background: rgba(255, 211, 78, 0.95); color: #2a1d00;
+  padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+}
+
+/* Photo frame for photo missions */
+#photo-frame { position: absolute; inset: 12% 14%; }
+#photo-frame .c { position: absolute; width: 34px; height: 34px; border: 4px solid #fff; }
+#photo-frame .tl { top: 0; left: 0; border-right: none; border-bottom: none; }
+#photo-frame .tr { top: 0; right: 0; border-left: none; border-bottom: none; }
+#photo-frame .bl { bottom: 0; left: 0; border-right: none; border-top: none; }
+#photo-frame .br { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+#engine-status {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+  color: rgba(255,255,255,0.8); font-size: 12px; z-index: 20;
+  background: rgba(0,0,0,0.35); padding: 4px 12px; border-radius: 12px;
+}
+#engine-status.hidden { display: none; }
+
+.hidden { display: none !important; }

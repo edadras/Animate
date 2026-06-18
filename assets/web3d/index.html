@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Rahino 3D World</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!--
+    Three.js is loaded from a CDN when online. When bundled offline inside the
+    Flutter app, drop the matching three.module.js into js/vendor/ and the
+    import map below will resolve to it (the engine degrades gracefully if 3D
+    fails to load, reporting status back to Flutter over the bridge).
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- In-canvas world-space labels (landmark names, Rahino speech, prompts).
+       The premium HUD itself is drawn natively by Flutter ON TOP of this view. -->
+  <div id="overlay">
+    <div id="rahino-bubble" class="hidden"></div>
+    <div id="world-labels"></div>
+    <div id="interact-hint" class="hidden"><b>✋</b> <span></span></div>
+    <div id="photo-frame" class="hidden">
+      <span class="c tl"></span><span class="c tr"></span>
+      <span class="c bl"></span><span class="c br"></span>
+    </div>
+  </div>
+
+  <!-- On-screen touch joystick + buttons live in Flutter; the engine also
+       supports keyboard for desktop testing in a browser. -->
+  <div id="engine-status">Booting 3D engine…</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
