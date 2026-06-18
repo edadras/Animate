@@ -9,14 +9,20 @@ import '../data/missions_data.dart';
 import '../data/shop_data.dart';
 import '../data/achievements_data.dart';
 import '../data/landmarks_data.dart';
+import '../models/leaderboard_entry.dart';
 import 'save_service.dart';
+import 'cloud_service.dart';
 
 /// Central game brain: economy, leveling, missions, achievements and live-ops.
 /// UI listens via [ChangeNotifier]; the 3D engine is driven through [engineSend]
 /// and feeds gameplay back through the on* event entry points.
 class GameState extends ChangeNotifier {
-  GameState(this._save);
+  GameState(this._save, this._cloud);
   final SaveService _save;
+  final CloudService _cloud;
+
+  bool get cloudEnabled => _cloud.enabled;
+  Future<List<LeaderboardEntry>> fetchLeaderboard() => _cloud.fetchLeaderboard();
 
   late PlayerProfile profile;
   late List<Mission> allMissions;
@@ -43,6 +49,16 @@ class GameState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   Future<void> init() async {
     profile = await _save.load();
+    // Cloud save: adopt the remote profile if it is clearly more advanced.
+    if (_cloud.enabled) {
+      final remote = await _cloud.downloadSave();
+      if (remote != null) {
+        final rp = PlayerProfile.fromJson(remote);
+        final localScore = profile.level * 100000 + profile.coinsCollected;
+        final remoteScore = rp.level * 100000 + rp.coinsCollected;
+        if (remoteScore > localScore) profile = rp;
+      }
+    }
     allMissions = buildAllMissions();
     final now = DateTime.now();
     dailyMission = dailyMissionFor(now, allMissions);
@@ -145,6 +161,7 @@ class GameState extends ChangeNotifier {
     onToast?.call('Mission complete: +${m.rewardCoins}🪙 +${m.rewardXp} XP', icon: '✅');
 
     _evaluateAchievements();
+    _submitScore();
     _markDirty();
     notifyListeners();
   }
@@ -495,10 +512,28 @@ class GameState extends ChangeNotifier {
   // ===========================================================================
   void _markDirty() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 1200), () => _save.save(profile));
+    _saveTimer = Timer(const Duration(milliseconds: 1200), () {
+      _save.save(profile);
+      if (_cloud.enabled) _cloud.uploadSave(profile.toJson());
+    });
   }
 
-  Future<void> saveNow() => _save.save(profile);
+  Future<void> saveNow() async {
+    await _save.save(profile);
+    if (_cloud.enabled) {
+      await _cloud.uploadSave(profile.toJson());
+      _submitScore();
+    }
+  }
+
+  void _submitScore() {
+    if (!_cloud.enabled) return;
+    _cloud.submitScore(
+      name: profile.name,
+      score: profile.missionsCompleted * 100 + profile.coinsCollected,
+      level: profile.level,
+    );
+  }
 
   Future<void> resetSave() async {
     await _save.reset();

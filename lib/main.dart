@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'services/save_service.dart';
+import 'services/cloud_service.dart';
 import 'services/game_state.dart';
 import 'theme/app_theme.dart';
 import 'ui/screens/root_screen.dart';
@@ -17,7 +18,7 @@ class RahinoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => GameState(SaveService())..init(),
+      create: (_) => GameState(SaveService(), CloudService())..init(),
       child: MaterialApp(
         title: 'Rahino: Istanbul Treasure Hunt',
         debugShowCheckedModeBanner: false,

@@ -17,6 +17,8 @@ dependencies:
   shared_preferences: ^2.2.3
   # Embedded WebGL 3D engine + JS <-> Dart bridge
   flutter_inappwebview: ^6.0.0
+  # Cloud save / leaderboard REST client
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_lints: ^3.0.0
@@ -26,3 +28,9 @@ flutter:
   assets:
     - assets/web3d/
     - assets/web3d/js/
+    - assets/web3d/js/vendor/
+    - assets/web3d/js/vendor/addons/objects/
+    - assets/web3d/js/vendor/addons/loaders/
+    - assets/web3d/js/vendor/addons/utils/
+    - assets/web3d/models/
+    - assets/web3d/audio/

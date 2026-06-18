@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/achievements_data.dart';
+import '../../models/leaderboard_entry.dart';
 import '../../services/game_state.dart';
 import '../../theme/app_theme.dart';
 import 'sheet.dart';
@@ -100,13 +101,15 @@ class ProfilePanel extends StatelessWidget {
             );
           }),
           const SizedBox(height: 16),
-          _SectionTitle('Leaderboard'),
+          _SectionTitle(game.cloudEnabled ? 'Global Leaderboard' : 'Leaderboard'),
           const _Leaderboard(),
           const SizedBox(height: 10),
-          const Text(
-            'Leaderboard shown is local. Cloud sync & global ranks are wired through '
-            'the save service and can connect to a backend.',
-            style: TextStyle(color: Colors.white38, fontSize: 11),
+          Text(
+            game.cloudEnabled
+                ? 'Live global ranks via your cloud backend.'
+                : 'Local leaderboard. Set a backend URL (lib/config.dart) to enable '
+                    'cloud saves & global ranks.',
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
             textAlign: TextAlign.center,
           ),
         ],
@@ -144,38 +147,58 @@ class _SectionTitle extends StatelessWidget {
 class _Leaderboard extends StatelessWidget {
   const _Leaderboard();
 
+  List<LeaderboardEntry> _local(GameState game) {
+    final me = game.profile;
+    final list = <LeaderboardEntry>[
+      LeaderboardEntry(name: 'Selin', score: (me.level + 4) * 220, level: me.level + 4),
+      LeaderboardEntry(name: 'Mehmet', score: (me.level + 2) * 210, level: me.level + 2),
+      LeaderboardEntry(name: me.name, score: me.missionsCompleted * 100 + me.coinsCollected, level: me.level, isMe: true),
+      LeaderboardEntry(name: 'Ayşe', score: me.level * 150, level: me.level),
+      LeaderboardEntry(name: 'Can', score: me.level * 120, level: me.level),
+    ]..sort((a, b) => b.score.compareTo(a.score));
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
-    final me = game.profile;
-    // A simple local leaderboard scaled to the player's level so they can climb.
-    final rivals = <Map<String, dynamic>>[
-      {'name': 'Selin', 'score': (me.level + 4) * 220},
-      {'name': 'Mehmet', 'score': (me.level + 2) * 210},
-      {'name': 'You', 'score': me.missionsCompleted * 100 + me.coinsCollected},
-      {'name': 'Ayşe', 'score': (me.level) * 150},
-      {'name': 'Can', 'score': (me.level) * 120},
-    ]..sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+    if (!game.cloudEnabled) return _list(_local(game));
+    return FutureBuilder<List<LeaderboardEntry>>(
+      future: game.fetchLeaderboard(),
+      builder: (_, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator(color: AppColors.gold)),
+          );
+        }
+        final data = (snap.data == null || snap.data!.isEmpty) ? _local(game) : snap.data!;
+        return _list(data);
+      },
+    );
+  }
 
+  Widget _list(List<LeaderboardEntry> entries) {
     return Column(
-      children: List.generate(rivals.length, (i) {
-        final r = rivals[i];
-        final isMe = r['name'] == 'You';
+      children: List.generate(entries.length, (i) {
+        final r = entries[i];
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: isMe ? AppColors.gold.withOpacity(0.2) : AppColors.navy2.withOpacity(0.5),
+            color: r.isMe ? AppColors.gold.withOpacity(0.2) : AppColors.navy2.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isMe ? AppColors.gold : Colors.transparent),
+            border: Border.all(color: r.isMe ? AppColors.gold : Colors.transparent),
           ),
           child: Row(
             children: [
               Text('#${i + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold)),
               const SizedBox(width: 12),
-              Text(r['name'] as String, style: TextStyle(fontWeight: isMe ? FontWeight.w900 : FontWeight.w600)),
+              Text(r.name, style: TextStyle(fontWeight: r.isMe ? FontWeight.w900 : FontWeight.w600)),
+              const SizedBox(width: 6),
+              Text('Lv${r.level}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
               const Spacer(),
-              Text('${r['score']} pts', style: const TextStyle(color: Colors.white70)),
+              Text('${r.score} pts', style: const TextStyle(color: Colors.white70)),
             ],
           ),
         );

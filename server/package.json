@@ -1,0 +1,12 @@
+{
+  "name": "rahino-cloud",
+  "version": "1.0.0",
+  "description": "Reference backend for Rahino: Istanbul Treasure Hunt — cloud saves + leaderboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

@@ -6,16 +6,15 @@
   <title>Rahino 3D World</title>
   <link rel="stylesheet" href="styles.css" />
   <!--
-    Three.js is loaded from a CDN when online. When bundled offline inside the
-    Flutter app, drop the matching three.module.js into js/vendor/ and the
-    import map below will resolve to it (the engine degrades gracefully if 3D
-    fails to load, reporting status back to Flutter over the bridge).
+    Three.js (r161) + addons are bundled locally under js/vendor/ so the game
+    runs fully OFFLINE — no CDN required. The engine still degrades gracefully
+    and reports status to Flutter over the bridge if 3D fails to start.
   -->
   <script type="importmap">
   {
     "imports": {
-      "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+      "three": "./js/vendor/three.module.js",
+      "three/addons/": "./js/vendor/addons/"
     }
   }
   </script>

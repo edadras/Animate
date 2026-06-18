@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { Bridge } from './bridge.js';
 import { Audio } from './audio.js';
+import { preloadModels, hasModel, cloneStatic, instantiate, getAction, getActionByIndex } from './models.js';
 import { WORLD, LANDMARKS, DISTRICTS, WEATHER } from './data.js';
 
 let Sky = null; // loaded lazily; engine still runs if it fails
@@ -36,6 +37,7 @@ const G = {
   rainSys: null, snowSys: null,
   ready: false,
   density: 1,
+  mixers: [],   // active AnimationMixers (from loaded .glb characters)
 };
 
 const TMP = new THREE.Vector3();
@@ -78,6 +80,11 @@ async function init() {
   buildGround();
   buildWater();
   buildRoads();
+
+  setStatus('Loading 3D models…');
+  const modelsLoaded = await preloadModels();
+  setStatus(modelsLoaded ? `Loaded ${modelsLoaded} 3D models…` : 'Building world…');
+
   buildLandmarks();
   buildVegetation();
   buildPlayer();
@@ -281,6 +288,10 @@ function mkMat(color, rough = 0.8, metal = 0.0) {
 }
 
 function buildLandmarkMesh(group, def, accent) {
+  // Use a real building model for this landmark type when available.
+  const modelBuilding = cloneStatic('building_' + def.type);
+  if (modelBuilding) { group.add(modelBuilding); return; }
+
   const stone = mkMat(0xe7ddc7), accentMat = mkMat(accent), dome = mkMat(0xb9c4cf, 0.4, 0.2);
   const addShadow = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
 
@@ -353,6 +364,8 @@ function buildLandmarkMesh(group, def, accent) {
 }
 
 function tree(parent, x, z) {
+  const model = cloneStatic('tree');
+  if (model) { model.position.set(x, 0, z); model.rotation.y = Math.random() * Math.PI * 2; parent.add(model); return model; }
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 4, 7), mkMat(0x6b4a2b));
   trunk.position.y = 2; trunk.castShadow = true; g.add(trunk);
@@ -395,8 +408,43 @@ function makeHumanoid(opts = {}) {
   return g;
 }
 
+// Build an animated character from a .glb if available, else procedural.
+function makeAnimatedChar(modelId, proceduralOpts, modelScale) {
+  const inst = instantiate(modelId);
+  if (!inst) return makeHumanoid(proceduralOpts);
+  const g = new THREE.Group();
+  inst.root.scale.setScalar(modelScale || 1);
+  g.add(inst.root);
+  g.userData.model = true;
+  g.userData.mixer = inst.mixer;
+  if (inst.mixer) {
+    const idle = getAction(inst, ['Idle', 'idle', 'IDLE']) || getActionByIndex(inst, 0);
+    const walk = getAction(inst, ['Walk', 'walk', 'Walking']);
+    const run = getAction(inst, ['Run', 'run', 'Running']);
+    if (idle) idle.setEffectiveWeight(1);
+    g.userData.actions = { idle, walk, run };
+    G.mixers.push(inst.mixer);
+  }
+  return g;
+}
+
+function updateModelChar(char, speed, dt) {
+  const a = char.userData.actions;
+  if (!a) return;
+  const moving = speed > 0.1, running = speed > 9;
+  const lerp = (act, target) => { if (act) act.setEffectiveWeight(THREE.MathUtils.lerp(act.getEffectiveWeight(), target, Math.min(1, dt * 8))); };
+  lerp(a.idle, moving ? 0 : 1);
+  lerp(a.walk, moving && !running ? 1 : 0);
+  lerp(a.run, running ? 1 : 0);
+}
+
+function animateChar(char, speed, dt) {
+  if (char.userData.model) updateModelChar(char, speed, dt);
+  else animateLimbs(char, speed, dt);
+}
+
 function buildPlayer() {
-  const p = makeHumanoid({ shirt: 0x2e8b57, pants: 0x394b59, skin: 0xe8b48c });
+  const p = makeAnimatedChar('player', { shirt: 0x2e8b57, pants: 0x394b59, skin: 0xe8b48c }, 1.0);
   p.position.set(-256, groundHeight(-256, -200), -200); // start near airport
   G.scene.add(p);
   G.player = p;
@@ -408,6 +456,17 @@ function buildPlayer() {
 
 // Rahino: friendly rhino mascot in a rainbow "Rahino" hoodie + backpack.
 function buildRahino() {
+  // Prefer a real .glb model when present.
+  if (hasModel('rahino')) {
+    const r = makeAnimatedChar('rahino', {}, 1.0);
+    r.scale.setScalar(0.92);
+    r.position.copy(G.player.position).add(new THREE.Vector3(2, 0, 2));
+    G.scene.add(r);
+    G.rahino = r;
+    if (!r.userData.parts) r.userData.parts = { armL: new THREE.Object3D(), armR: new THREE.Object3D(), legL: new THREE.Object3D(), legR: new THREE.Object3D(), head: new THREE.Object3D() };
+    r.userData.emote = null; r.userData.emoteT = 0; r.userData.bobT = 0;
+    return;
+  }
   const g = new THREE.Group();
   const mk = (geo, mat, y) => { const m = new THREE.Mesh(geo, mkMat(mat)); m.castShadow = true; m.position.y = y; return m; };
 
@@ -452,12 +511,13 @@ function randPos(spread = WORLD.size) {
 function spawnCoins(n) {
   const geo = new THREE.CylinderGeometry(0.45, 0.45, 0.1, 18);
   const mat = new THREE.MeshStandardMaterial({ color: 0xffcc33, metalness: 0.3, roughness: 0.35, emissive: 0x6a4a00, emissiveIntensity: 0.5 });
+  const useModel = hasModel('coin');
   for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(geo, mat);
+    const m = useModel ? cloneStatic('coin') : new THREE.Mesh(geo, mat);
     const p = randPos(WORLD.size * 1.4);
     if (Math.abs(p.z) < 60 && p.x > -200 && p.x < 240) p.z += 120; // off the water
     m.position.set(p.x, groundHeight(p.x, p.z) + 1.2, p.z);
-    m.rotation.x = Math.PI / 2;
+    if (!useModel) m.rotation.x = Math.PI / 2;
     m.castShadow = true;
     G.scene.add(m);
     G.coins.push(m);
@@ -466,6 +526,17 @@ function spawnCoins(n) {
 
 function spawnChests(n) {
   for (let i = 0; i < n; i++) {
+    const model = cloneStatic('chest');
+    if (model) {
+      const g = new THREE.Group();
+      g.add(model);
+      const p = randPos(WORLD.size * 1.3);
+      g.position.set(p.x, groundHeight(p.x, p.z), p.z);
+      g.userData = { opened: false, lid: model };
+      G.scene.add(g);
+      G.chests.push(g);
+      continue;
+    }
     const g = new THREE.Group();
     const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.9), mkMat(0x7a4a22));
     const lid = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.35, 0.95), mkMat(0x5a3416));
@@ -485,7 +556,7 @@ function spawnNPCs(n) {
   n = Math.round(n * G.density);
   for (let i = 0; i < n; i++) {
     const kind = NPC_KINDS[i % NPC_KINDS.length];
-    const npc = makeHumanoid({
+    const npc = cloneStatic('npc') || makeHumanoid({
       shirt: new THREE.Color().setHSL(Math.random(), 0.5, 0.5).getHex(),
       pants: new THREE.Color().setHSL(Math.random(), 0.3, 0.35).getHex(),
       skin: [0xe8b48c, 0xd49a6a, 0xc88a5a][i % 3],
@@ -504,9 +575,14 @@ function spawnVehicles(n) {
   for (let i = 0; i < n; i++) {
     const isBus = i % 4 === 0;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(isBus ? 6 : 3.2, isBus ? 2.4 : 1.4, isBus ? 2.4 : 1.6),
-      mkMat(isBus ? 0xc0392b : new THREE.Color().setHSL(Math.random(), 0.6, 0.5).getHex(), 0.3, 0.4));
-    body.position.y = isBus ? 1.6 : 1.0; body.castShadow = true; g.add(body);
+    const model = cloneStatic(isBus ? 'bus' : 'car');
+    if (model) {
+      g.add(model);
+    } else {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(isBus ? 6 : 3.2, isBus ? 2.4 : 1.4, isBus ? 2.4 : 1.6),
+        mkMat(isBus ? 0xc0392b : new THREE.Color().setHSL(Math.random(), 0.6, 0.5).getHex(), 0.3, 0.4));
+      body.position.y = isBus ? 1.6 : 1.0; body.castShadow = true; g.add(body);
+    }
     const path = G.roadPaths[i % G.roadPaths.length];
     g.userData = { path, t: Math.random(), speed: (isBus ? 0.03 : 0.06) + Math.random() * 0.04, isBus };
     G.scene.add(g);
@@ -517,10 +593,15 @@ function spawnVehicles(n) {
 function spawnFerries(n) {
   for (let i = 0; i < n; i++) {
     const g = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(10, 2.4, 4), mkMat(0xf5f5f5, 0.5));
-    hull.position.y = 1.2; const deck = new THREE.Mesh(new THREE.BoxGeometry(7, 1.6, 3.4), mkMat(0xffd34e));
-    deck.position.y = 2.8; const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2, 10), mkMat(0xc0392b));
-    stack.position.set(-1, 4, 0); hull.castShadow = true; g.add(hull, deck, stack);
+    const model = cloneStatic('ferry');
+    if (model) {
+      g.add(model);
+    } else {
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(10, 2.4, 4), mkMat(0xf5f5f5, 0.5));
+      hull.position.y = 1.2; const deck = new THREE.Mesh(new THREE.BoxGeometry(7, 1.6, 3.4), mkMat(0xffd34e));
+      deck.position.y = 2.8; const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2, 10), mkMat(0xc0392b));
+      stack.position.set(-1, 4, 0); hull.castShadow = true; g.add(hull, deck, stack);
+    }
     g.userData = { t: Math.random(), speed: 0.02 + Math.random() * 0.02, radius: 120 + i * 18 };
     G.scene.add(g);
     G.ferries.push(g);
@@ -541,10 +622,15 @@ function spawnPets(n) {
   for (let i = 0; i < n; i++) {
     const isCat = i % 2 === 0;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.5, 4, 6), mkMat(isCat ? 0xd9a441 : 0x8a6a4a));
-    body.rotation.z = Math.PI / 2; body.position.y = 0.35; body.castShadow = true;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), mkMat(isCat ? 0xd9a441 : 0x8a6a4a));
-    head.position.set(0.5, 0.45, 0); g.add(body, head);
+    const model = cloneStatic(isCat ? 'cat' : 'dog');
+    if (model) {
+      g.add(model);
+    } else {
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.5, 4, 6), mkMat(isCat ? 0xd9a441 : 0x8a6a4a));
+      body.rotation.z = Math.PI / 2; body.position.y = 0.35; body.castShadow = true;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), mkMat(isCat ? 0xd9a441 : 0x8a6a4a));
+      head.position.set(0.5, 0.45, 0); g.add(body, head);
+    }
     const p = randPos(WORLD.size * 0.9);
     g.position.set(p.x, groundHeight(p.x, p.z), p.z);
     g.userData = { isCat, origin: g.position.clone(), phase: Math.random() * 10 };
@@ -623,6 +709,7 @@ function setWeather(w) {
   clearPrecip();
   if (w === 'rain') G.rainSys = makePrecip(0x9fb3c4, 2500, 1.2, true);
   if (w === 'snow') G.snowSys = makePrecip(0xffffff, 1400, 0.35, false);
+  Audio.setWeather(w);
   updateSun();
   Bridge.emit('weatherChanged', { weather: w });
 }
@@ -786,6 +873,8 @@ function loop() {
   G.time = (G.time + G.timeScale * dt * 60) % 24;
   if (Math.random() < 0.02) updateSun(); // periodic relight
 
+  for (let i = 0; i < G.mixers.length; i++) G.mixers[i].update(dt);
+
   G._readKeys && G._readKeys();
   updatePlayer(dt);
   updateRahino(dt);
@@ -845,8 +934,8 @@ function updatePlayer(dt) {
   p.position.x = THREE.MathUtils.clamp(p.position.x, -lim, lim);
   p.position.z = THREE.MathUtils.clamp(p.position.z, -lim, lim);
 
-  // limb animation
-  animateLimbs(p, p.userData.speed, dt);
+  // limb / clip animation
+  animateChar(p, p.userData.speed, dt);
 
   // follow pet
   if (p.userData.followPet) {
@@ -880,9 +969,9 @@ function updateRahino(dt) {
   if (dist > 0.4) {
     r.position.lerp(target, Math.min(1, dt * (dist > 8 ? 6 : 3)));
     r.lookAt(p.position.x, r.position.y, p.position.z);
-    animateLimbs(r, dist > 6 ? 12 : 6, dt);
+    animateChar(r, dist > 6 ? 12 : 6, dt);
   } else {
-    animateLimbs(r, 0, dt);
+    animateChar(r, 0, dt);
   }
   // idle bob
   u.bobT += dt * 3;
@@ -990,6 +1079,7 @@ function updateProximity() {
       lm.discovered = true;
       lm.labelEl.classList.add('discovered');
       Audio.discover();
+      Audio.playMusic(lm.def.district); // switch to the district's track/ambience
       rahinoEmote('celebrate');
       rahinoSay(`You discovered ${lm.def.name}! ${lm.def.icon}`);
       Bridge.emit('landmarkDiscovered', { id: lm.def.id, name: lm.def.name });
